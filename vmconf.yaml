@@ -58,52 +58,13 @@
           - xserver-xorg-core
           - xorg-video-abi-23
           - xorgxrdp
+          - xrdp
         state: present
 
     - name: Remove unused packages
       apt:
         autoremove: yes
         purge: yes
-
-    # -------------------------
-    # Clone XRDP Repository
-    # -------------------------
-    - name: Clone XRDP init repository
-      git:
-        repo: "{{ repo_url }}"
-        dest: "{{ lookup('env','HOME') }}/xrdp-init"
-        version: master
-
-    # -------------------------
-    # XRDP Installation (Marker)
-    # -------------------------
-    - name: Check if XRDP has already been installed
-      stat:
-        path: "{{ marker_file }}"
-      register: xrdp_marker
-
-    - name: Run XRDP install script via script module
-      script: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/install.sh"
-      become: true
-      when: not xrdp_marker.stat.exists
-      register: xrdp_reinstall
-
-    - name: Create XRDP installation marker file
-      file:
-        path: "{{ marker_file }}"
-        state: touch
-      when: not xrdp_marker.stat.exists
-
-    # -------------------------
-    # Reboot if first install
-    # -------------------------
-    - name: Reboot the system after first XRDP installation
-      reboot:
-        msg: "Rebooting after XRDP installation"
-        pre_reboot_delay: 5
-        post_reboot_delay: 20
-        reboot_timeout: 600
-      when: not xrdp_marker.stat.exists
 
     # -------------------------
     # XRDP Service and Certificates
