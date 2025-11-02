@@ -20,11 +20,6 @@
 
   tasks:
 
-    - name: Remove old eth1 netplan file
-      file:
-        path: /etc/netplan/60-eth1-static.yaml
-        state: absent
-
     # -------------------------
     # Network Configuration
     # -------------------------
