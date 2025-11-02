@@ -1,0 +1,63 @@
+---
+- name: Configure Ubuntu 18.04 VM (Local, Module-Driven)
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+
+    # -------------------------
+    # Package Installation
+    # -------------------------
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - ssh
+          - apache2
+          - libapache2-mod-fcgid
+          - libapache2-mod-wsgi
+          - xvfb
+        state: present
+
+    # -------------------------
+    # Apache config
+    # -------------------------
+    - name: Enable required Apache modules
+      become: true
+      apache2_module:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - rewrite
+        - cgi
+        - fcgid
+        - ssl
+        - proxy
+        - proxy_http
+        - http2
+
+    - name: Comment out PrivateTmp in Apache systemd unit
+      become: true
+      lineinfile:
+        path: /lib/systemd/system/apache2.service
+        regexp: '^PrivateTmp=true'
+        line: '#PrivateTmp=true'
+        backup: yes
+
+    # -------------------------
+    # Reload services
+    # -------------------------
+    - name: Reload systemd to recognize changes
+      become: true
+      command: systemctl daemon-reexec
+
+    - name: Reload Apache2 configuration
+      become: true
+      systemd:
+        name: apache2
+        state: restarted
+        enabled: true
