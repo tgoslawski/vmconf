@@ -1,0 +1,169 @@
+---
+- name: Configure Ubuntu 18.04 VM (Local, with Reboot)
+  hosts: localhost
+  connection: local
+  become: true
+
+  vars:
+    network_interface: eth1
+    ip_address: 192.168.0.150
+    netmask: 255.255.255.0
+    gateway: 192.168.0.171
+    dns_server: 192.168.0.171
+    repo_url: "https://github.com/jterry75/xrdp-init.git"
+    share_path: "//192.168.0.171/git_repos"
+    mount_point: "/mnt/windows_share"
+    smb_user: "user"
+    smb_password: "pass"
+    current_user: "{{ lookup('env','USER') }}"
+
+  tasks:
+    # -------------------------
+    # Network Configuration
+    # -------------------------
+    - name: Configure static IP for {{ network_interface }}
+      copy:
+        dest: /etc/netplan/60-eth1-static.yaml
+        content: |
+          network:
+            version: 2
+            renderer: networkd
+            ethernets:
+              {{ network_interface }}:
+                dhcp4: no
+                addresses:
+                  - {{ ip_address }}/24
+                gateway4: {{ gateway }}
+                nameservers:
+                  addresses: [{{ dns_server }}]
+      notify: Apply netplan configuration
+
+    # -------------------------
+    # Package Installation
+    # -------------------------
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - openssh-server
+          - linux-azure
+          - linux-cloud-tools-generic
+          - git
+          - cifs-utils
+          - xserver-xorg-core
+          - xorg-video-abi-23
+          - xorgxrdp
+        state: present
+
+    - name: Remove unused packages
+      apt:
+        autoremove: yes
+        purge: yes
+
+    # -------------------------
+    # Clone and Install XRDP Script
+    # -------------------------
+    - name: Clone XRDP init repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ lookup('env','HOME') }}/xrdp-init"
+        version: master
+
+    - name: Run XRDP install script (first run)
+      command: ./install.sh
+      args:
+        chdir: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/"
+      register: xrdp_install
+      changed_when: "'Nothing to do' not in xrdp_install.stdout"
+
+    # -------------------------
+    # Reboot After Initial XRDP Install
+    # -------------------------
+    - name: Reboot the system after first XRDP installation
+      reboot:
+        msg: "Rebooting after XRDP installation"
+        pre_reboot_delay: 5
+        post_reboot_delay: 20
+        reboot_timeout: 600
+      when: xrdp_install is changed
+
+    # -------------------------
+    # Continue After Reboot
+    # -------------------------
+    - name: Re-run XRDP install script after reboot
+      command: ./install.sh
+      args:
+        chdir: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/"
+      register: xrdp_reinstall
+      changed_when: "'Nothing to do' not in xrdp_reinstall.stdout"
+
+    # -------------------------
+    # XRDP Service and Certificates
+    # -------------------------
+    - name: Enable and start xrdp service
+      systemd:
+        name: xrdp
+        enabled: yes
+        state: started
+
+    - name: Add user to ssl-cert group
+      user:
+        name: "{{ current_user }}"
+        groups: ssl-cert
+        append: yes
+
+    - name: Recreate xrdp RSA keys
+      file:
+        path: /etc/xrdp/rsakeys.ini
+        state: absent
+
+    - name: Generate new xrdp RSA keys
+      command: xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
+
+    - name: Generate self-signed SSL certificate
+      command: >
+        openssl req -x509 -newkey rsa:2048
+        -keyout /etc/xrdp/key.pem
+        -out /etc/xrdp/cert.pem
+        -days 3650 -nodes
+        -subj "/CN=localhost"
+      args:
+        creates: /etc/xrdp/cert.pem
+
+    - name: Fix permissions on XRDP certificates
+      file:
+        path: "{{ item.path }}"
+        owner: xrdp
+        group: xrdp
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "/etc/xrdp/key.pem", mode: "0600" }
+        - { path: "/etc/xrdp/cert.pem", mode: "0644" }
+
+    - name: Restart XRDP service
+      systemd:
+        name: xrdp
+        state: restarted
+
+    # -------------------------
+    # Mount Network Share
+    # -------------------------
+    - name: Ensure mount point exists
+      file:
+        path: "{{ mount_point }}"
+        state: directory
+
+    - name: Add CIFS mount to fstab
+      mount:
+        path: "{{ mount_point }}"
+        src: "{{ share_path }}"
+        fstype: cifs
+        opts: "username={{ smb_user }},password={{ smb_password }},file_mode=0777,dir_mode=0777"
+        state: mounted
+
+  handlers:
+    - name: Apply netplan configuration
+      command: netplan apply
