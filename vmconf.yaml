@@ -72,7 +72,6 @@
       register: xrdp_install
       changed_when: "'Nothing to do' not in xrdp_install.stdout"
 
-
     - name: Reboot the system after first XRDP installation
       reboot:
         msg: "Rebooting after XRDP installation"
