@@ -3,13 +3,14 @@
   hosts: localhost
   connection: local
   become: true
+  collections:
+    - community.general
 
   vars:
     network_interface: eth1
-    ip_address: 192.168.0.150
-    netmask: 255.255.255.0
-    gateway: 192.168.0.171
-    dns_server: 192.168.0.171
+    eth1_ip: "192.168.0.150/24"
+    eth1_gw: "192.168.0.171"
+    eth1_dns: "192.168.0.171"
     repo_url: "https://github.com/jterry75/xrdp-init.git"
     share_path: "//192.168.0.171/git_repos"
     mount_point: "/mnt/windows_share"
@@ -21,16 +22,16 @@
   tasks:
 
     # -------------------------
-    # Network Configuration
+    # Configure eth1 static IP via NetworkManager
     # -------------------------
-    - name: Configure eth1 static IP via NetworkManager
+    - name: Configure eth1 with static IP
       community.general.nmcli:
         conn_name: eth1
         ifname: eth1
         type: ethernet
-        ip4: 192.168.0.150/24
-        gw4: 192.168.0.171
-        dns4: 192.168.0.171
+        ip4: "{{ eth1_ip }}"
+        gw4: "{{ eth1_gw }}"
+        dns4: "{{ eth1_dns }}"
         state: present
 
     # -------------------------
@@ -131,6 +132,3 @@
         fstype: cifs
         opts: "username={{ smb_user }},password={{ smb_password }},file_mode=0777,dir_mode=0777"
         state: mounted
-
-  collections:
-    - community.general
