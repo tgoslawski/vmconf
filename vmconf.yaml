@@ -35,7 +35,6 @@
                   addresses: [{{ dns_server }}]
       notify: Apply netplan configuration
 
-
     - name: Update apt cache
       apt:
         update_cache: yes
@@ -58,7 +57,6 @@
         autoremove: yes
         purge: yes
 
-
     - name: Clone XRDP init repository
       git:
         repo: "{{ repo_url }}"
@@ -80,13 +78,12 @@
         reboot_timeout: 600
       when: xrdp_install is changed
 
-
     - name: Re-run XRDP install script after reboot
       command: ./install.sh
       args:
         chdir: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/"
       register: xrdp_reinstall
-      changed_when: "'Nothing to do' not in xrdp_reinstall.stdout"
+      changed_when: "'Nothing to do' not in xrdp_reinstall.stdout_lines | join(' ')"
 
 
     - name: Enable and start xrdp service
@@ -133,7 +130,6 @@
       systemd:
         name: xrdp
         state: restarted
-
 
     - name: Ensure mount point exists
       file:
