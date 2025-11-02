@@ -26,6 +26,23 @@
     # -------------------------
     # Apache config
     # -------------------------
+    - name: Switch Apache to prefork MPM
+      become: true
+      block:
+        - name: Disable event MPM
+          apache2_module:
+            name: mpm_event
+            state: absent
+
+        - name: Enable prefork MPM
+          apache2_module:
+            name: mpm_prefork
+            state: present
+
+        - name: Enable CGI module (prefork only)
+          apache2_module:
+            name: cgi
+            state: present
     - name: Enable required Apache modules
       become: true
       apache2_module:
@@ -33,7 +50,6 @@
         state: present
       loop:
         - rewrite
-        - cgi
         - fcgid
         - ssl
         - proxy
