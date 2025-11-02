@@ -64,11 +64,11 @@
         version: master
 
     - name: Run XRDP install script (first run)
-      command: ./install.sh
+      shell: ./install.sh
       args:
         chdir: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/"
-      register: xrdp_install
-      changed_when: "'Nothing to do' not in xrdp_install.stdout"
+      register: xrdp_reinstall
+      changed_when: "'Nothing to do' not in xrdp_reinstall.stdout"
 
     - name: Reboot the system after first XRDP installation
       reboot:
