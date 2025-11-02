@@ -131,3 +131,6 @@
         fstype: cifs
         opts: "username={{ smb_user }},password={{ smb_password }},file_mode=0777,dir_mode=0777"
         state: mounted
+
+  collections:
+    - community.general
