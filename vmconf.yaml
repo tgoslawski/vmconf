@@ -3,14 +3,13 @@
   hosts: localhost
   connection: local
   become: true
-  collections:
-    - community.general
 
   vars:
     network_interface: eth1
-    eth1_ip: "192.168.0.150/24"
-    eth1_gw: "192.168.0.171"
-    eth1_dns: "192.168.0.171"
+    ip_address: 192.168.0.150
+    netmask: 255.255.255.0
+    gateway: 192.168.0.171
+    dns_server: 192.168.0.171
     repo_url: "https://github.com/jterry75/xrdp-init.git"
     share_path: "//192.168.0.171/git_repos"
     mount_point: "/mnt/windows_share"
@@ -22,17 +21,24 @@
   tasks:
 
     # -------------------------
-    # Configure eth1 static IP via NetworkManager
+    # Network Configuration
     # -------------------------
-    - name: Configure eth1 with static IP
-      community.general.nmcli:
-        conn_name: eth1
-        ifname: eth1
-        type: ethernet
-        ip4: "{{ eth1_ip }}"
-        gw4: "{{ eth1_gw }}"
-        dns4: "{{ eth1_dns }}"
-        state: present
+    - name: Configure both network adapters
+      copy:
+        dest: /etc/netplan/60-interfaces.yaml
+        content: |
+          network:
+            version: 2
+            renderer: NetworkManager
+            ethernets:
+              eth1:
+                dhcp4: no
+                addresses:
+                  - 192.168.0.150/24
+                gateway4: 192.168.0.171
+                nameservers:
+                  addresses: [192.168.0.171]
+      notify: Apply netplan
 
     # -------------------------
     # Package Installation
@@ -132,3 +138,7 @@
         fstype: cifs
         opts: "username={{ smb_user }},password={{ smb_password }},file_mode=0777,dir_mode=0777"
         state: mounted
+
+  handlers:
+    - name: Apply netplan
+      command: netplan apply
