@@ -20,24 +20,31 @@
 
   tasks:
 
+    - name: Remove old eth1 netplan file
+      file:
+        path: /etc/netplan/60-eth1-static.yaml
+        state: absent
+
     # -------------------------
     # Network Configuration
     # -------------------------
-    - name: Configure static IP for {{ network_interface }}
+    - name: Configure both network adapters
       copy:
-        dest: /etc/netplan/60-eth1-static.yaml
+        dest: /etc/netplan/60-interfaces.yaml
         content: |
           network:
             version: 2
             renderer: networkd
             ethernets:
-              {{ network_interface }}:
+              eth0:
+                dhcp4: yes
+              eth1:
                 dhcp4: no
                 addresses:
-                  - {{ ip_address }}/24
-                gateway4: {{ gateway }}
+                  - 192.168.0.150/24
+                gateway4: 192.168.0.171
                 nameservers:
-                  addresses: [{{ dns_server }}]
+                  addresses: [192.168.0.171]
       notify: Apply netplan
 
     # -------------------------
