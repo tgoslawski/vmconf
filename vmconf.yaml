@@ -1,4 +1,5 @@
-- name: Configure Ubuntu 18.04 VM (Local, with Reboot)
+---
+- name: Configure Ubuntu 18.04 VM (Local, Module-Driven)
   hosts: localhost
   connection: local
   become: true
@@ -14,10 +15,14 @@
     mount_point: "/mnt/windows_share"
     smb_user: "user"
     smb_password: "pass"
+    marker_file: "{{ lookup('env','HOME') }}/.xrdp_installed"
     current_user: "{{ lookup('env','USER') }}"
 
   tasks:
 
+    # -------------------------
+    # Network Configuration
+    # -------------------------
     - name: Configure static IP for {{ network_interface }}
       copy:
         dest: /etc/netplan/60-eth1-static.yaml
@@ -33,8 +38,11 @@
                 gateway4: {{ gateway }}
                 nameservers:
                   addresses: [{{ dns_server }}]
-      notify: Apply netplan configuration
+      notify: Apply netplan
 
+    # -------------------------
+    # Package Installation
+    # -------------------------
     - name: Update apt cache
       apt:
         update_cache: yes
@@ -57,35 +65,49 @@
         autoremove: yes
         purge: yes
 
+    # -------------------------
+    # Clone XRDP Repository
+    # -------------------------
     - name: Clone XRDP init repository
       git:
         repo: "{{ repo_url }}"
         dest: "{{ lookup('env','HOME') }}/xrdp-init"
         version: master
 
-    - name: Run XRDP install script (first run)
-      shell: ./install.sh
-      args:
-        chdir: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/"
-      register: xrdp_reinstall
-      changed_when: "'Nothing to do' not in xrdp_reinstall.stdout"
+    # -------------------------
+    # XRDP Installation (Marker)
+    # -------------------------
+    - name: Check if XRDP has already been installed
+      stat:
+        path: "{{ marker_file }}"
+      register: xrdp_marker
 
+    - name: Run XRDP install script via script module
+      script: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/install.sh"
+      become: true
+      when: not xrdp_marker.stat.exists
+      register: xrdp_reinstall
+
+    - name: Create XRDP installation marker file
+      file:
+        path: "{{ marker_file }}"
+        state: touch
+      when: not xrdp_marker.stat.exists
+
+    # -------------------------
+    # Reboot if first install
+    # -------------------------
     - name: Reboot the system after first XRDP installation
       reboot:
         msg: "Rebooting after XRDP installation"
         pre_reboot_delay: 5
         post_reboot_delay: 20
         reboot_timeout: 600
-      when: xrdp_install is changed
+      when: not xrdp_marker.stat.exists
 
-    - name: Re-run XRDP install script after reboot
-      command: ./install.sh
-      args:
-        chdir: "{{ lookup('env','HOME') }}/xrdp-init/ubuntu/18.04/"
-      register: xrdp_reinstall
-      changed_when: "'Nothing to do' not in xrdp_reinstall.stdout_lines | join(' ')"
-
-
+    # -------------------------
+    # XRDP Service and Certificates
+    # -------------------------
     - name: Enable and start xrdp service
       systemd:
         name: xrdp
@@ -98,25 +120,32 @@
         groups: ssl-cert
         append: yes
 
-    - name: Recreate xrdp RSA keys
+    - name: Ensure /etc/xrdp exists
       file:
-        path: /etc/xrdp/rsakeys.ini
+        path: /etc/xrdp
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Remove old XRDP certs
+      file:
+        path: "{{ item }}"
         state: absent
+      loop:
+        - /etc/xrdp/cert.pem
+        - /etc/xrdp/key.pem
 
-    - name: Generate new xrdp RSA keys
-      command: xrdp-keygen xrdp /etc/xrdp/rsakeys.ini
+    - name: Generate self-signed XRDP certificate
+      community.crypto.openssl_certificate:
+        path: /etc/xrdp/cert.pem
+        privatekey_path: /etc/xrdp/key.pem
+        common_name: localhost
+        provider: selfsigned
+        days: 3650
+        mode: 0644
 
-    - name: Generate self-signed SSL certificate
-      command: >
-        openssl req -x509 -newkey rsa:2048
-        -keyout /etc/xrdp/key.pem
-        -out /etc/xrdp/cert.pem
-        -days 3650 -nodes
-        -subj "/CN=localhost"
-      args:
-        creates: /etc/xrdp/cert.pem
-
-    - name: Fix permissions on XRDP certificates
+    - name: Set permissions for XRDP certificates
       file:
         path: "{{ item.path }}"
         owner: xrdp
@@ -131,6 +160,9 @@
         name: xrdp
         state: restarted
 
+    # -------------------------
+    # Mount Network Share
+    # -------------------------
     - name: Ensure mount point exists
       file:
         path: "{{ mount_point }}"
@@ -145,5 +177,5 @@
         state: mounted
 
   handlers:
-    - name: Apply netplan configuration
+    - name: Apply netplan
       command: netplan apply
