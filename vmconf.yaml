@@ -1,4 +1,3 @@
----
 - name: Configure Ubuntu 18.04 VM (Local, with Reboot)
   hosts: localhost
   connection: local
