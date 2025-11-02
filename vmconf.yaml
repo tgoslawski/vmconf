@@ -3,6 +3,8 @@
   hosts: localhost
   connection: local
   become: true
+  collections:
+    - community.crypto
 
   vars:
     network_interface: eth1
