@@ -59,6 +59,7 @@
           - xorg-video-abi-23
           - xorgxrdp
           - xrdp
+          - cloud-guest-utils
         state: present
 
     - name: Remove unused packages
@@ -138,6 +139,20 @@
         fstype: cifs
         opts: "username={{ smb_user }},password={{ smb_password }},file_mode=0777,dir_mode=0777"
         state: mounted
+
+    # -------------------------
+    # Expand sda1 partition
+    # -------------------------
+    #- name: Fix GPT table (if needed)
+    #  command: sgdisk -e /dev/sda
+    #  ignore_errors: yes
+
+    - name: Grow partition to fill disk
+      command: growpart /dev/sda 1
+      ignore_errors: yes
+
+    - name: Resize filesystem to fill partition
+      command: resize2fs /dev/sda1
 
   handlers:
     - name: Apply netplan
